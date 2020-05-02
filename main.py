@@ -1,241 +1,435 @@
-import random
 import numpy as np
-import sklearn.linear_model as lm
-from scipy.stats import f, t
-from functools import partial
-from pyDOE2 import ccdesign
+from scipy.stats import f
+from scipy.stats import t as par_t
+from copy import deepcopy
+from random import uniform
+import lab5
 
 
-x_range = ((-3, 10), (-8, 2), (-6, 1))
-
-x_aver_max = sum([x[1] for x in x_range]) / 3  # середнє Xmax
-x_aver_min = sum([x[0] for x in x_range]) / 3  # середнє Xmin
-
-y_max = 200 + int(x_aver_max)
-y_min = 200 + int(x_aver_min)
 
 
-def s_kv(y, y_aver, n, m):  # квадратична дисперсія
+
+#   до 4 лаб роботи я
+#   імпортую 5 лаб роботу і в кінці запускаю цикл while:
+#   який зробить необхідну кількість ітерацій
+#   Також я додав змінну acumulator до якої я додаю 1 якщо критерій фішера вказав
+#   на неадекватність модлі. Якщо модель неадекватна для рівняння з ефектом взаємодії
+#   то запускаємо код лаб 5, де використовуємо рівняння з квадратичними членами
+
+
+
+
+
+x1_min = 10
+x1_max = 60
+x2_min = -25
+x2_max = 10
+x3_min = 10
+x3_max = 15
+
+y_min = 200 + sum([x1_min, x2_min, x3_min]) / len([x1_min, x2_min, x3_min])
+y_max = 200 + sum([x1_max, x2_max, x3_max]) / len([x1_max, x2_max, x3_max])
+
+m = 3
+p = 0.95
+N = 4
+counter = 0
+acumulator = 0
+
+initial_matrix = [[1, -1, -1, -1],
+                  [1, -1, 1, 1],
+                  [1, 1, -1, 1],
+                  [1, 1, 1, -1],
+                  [1, -1, -1, 1],
+                  [1, -1, 1, -1],
+                  [1, 1, -1, -1],
+                  [1, 1, 1, 1]]
+
+
+def abs_maker(mx, column, start, stop, step, val):
+    return sum([mx[column][j] for j in range(start, stop, step)]) / val
+
+
+def beta(lst, mx, n):
+    ac = 0
     res = []
-    for i in range(n):
-        s = sum([(y_aver[i] - y[i][j]) ** 2 for j in range(m)]) / m  # (Yсер - Y)^2
-        res.append(round(s, 3))
-    return res
-
-
-def regression(x, b):
-    y = sum([x[i] * b[i] for i in range(len(x))])
-    return y
-
-
-def plan_matrix5(n, m):
-    print(f'\nГенеруємо матрицю планування для n = {n}, m = {m}')
-
-    y = np.zeros(shape=(n, m))  # створюємо матрицю з нулів
-    for i in range(n):
-        for j in range(m):
-            y[i][j] = random.randint(y_min, y_max)  # заповнюємо цю матрицю ігриками
-
-    if n > 14:
-        no = n - 14
-    else:
-        no = 1
-    x_norm = ccdesign(3, center=(0, no))  # Central-Composite designs
-    x_norm = np.insert(x_norm, 0, 1, axis=1)
-
-    for i in range(4, 11):
-        x_norm = np.insert(x_norm, i, 0, axis=1)
-
-    l = 1.215
-
-    # матриця планування з нормовaними значеннями
-    for i in range(len(x_norm)):
-        for j in range(len(x_norm[i])):
-            if x_norm[i][j] < -1 or x_norm[i][j] > 1:
-                if x_norm[i][j] < 0:
-                    x_norm[i][j] = -l
-                else:
-                    x_norm[i][j] = l
-
-    def add_sq_nums(x):  # рахуємо квадратні числа
-        for i in range(len(x)):
-            x[i][4] = x[i][1] * x[i][2]
-            x[i][5] = x[i][1] * x[i][3]
-            x[i][6] = x[i][2] * x[i][3]
-            x[i][7] = x[i][1] * x[i][3] * x[i][2]
-            x[i][8] = x[i][1] ** 2
-            x[i][9] = x[i][2] ** 2
-            x[i][10] = x[i][3] ** 2
-        return x
-
-    x_norm = add_sq_nums(x_norm)  # додаємо їх в матрицю
-
-    x = np.ones(shape=(len(x_norm), len(x_norm[0])), dtype=np.int64)  # заповнюємо матрицю одиницями
-
-    # матриця планування з натуральними значеннями факторів
-    for i in range(8):
-        for j in range(1, 4):
-            if x_norm[i][j] == -1:
-                x[i][j] = x_range[j - 1][0]
-            else:
-                x[i][j] = x_range[j - 1][1]
-
-    for i in range(8, len(x)):
-        for j in range(1, 3):
-            x[i][j] = (x_range[j - 1][0] + x_range[j - 1][1]) / 2
-
-    dx = [x_range[i][1] - (x_range[i][0] + x_range[i][1]) / 2 for i in range(3)]
-
-    x[8][1] = l * dx[0] + x[9][1]
-    x[9][1] = -l * dx[0] + x[9][1]
-    x[10][2] = l * dx[1] + x[9][2]
-    x[11][2] = -l * dx[1] + x[9][2]
-    x[12][3] = l * dx[2] + x[9][3]
-    x[13][3] = -l * dx[2] + x[9][3]
-
-    x = add_sq_nums(x)  # додаємо квадратні числа в матрицю за натуральними значеннями
-
-    print('\nX:\n', x)
-    print('\nX нормоване:\n')
-    for i in x_norm:
-        print([round(x, 2) for x in i])
-    print('\nY:\n', y)
-
-    return x, y, x_norm
-
-
-def find_coef(X, Y, norm=False):
-    skm = lm.LinearRegression(fit_intercept=False)  # знаходимо коефіцієнти рівняння регресії
-    skm.fit(X, Y)
-    B = skm.coef_
-
-    if norm == 1:
-        print('\nКоефіцієнти рівняння регресії з нормованими X:')
-    else:
-        print('\nКоефіцієнти рівняння регресії:')
-    B = [round(i, 3) for i in B]
-    print(B)
-    print('\nРезультат рівняння зі знайденими коефіцієнтами:\n', np.dot(X, B))
-    return B
-
-
-def kriteriy_cochrana(y, y_aver, n, m):
-    f1 = m - 1  # степені свободи
-    f2 = n
-    q = 0.05  # рівень значимості
-    S_kv = s_kv(y, y_aver, n, m)
-    Gp = max(S_kv) / sum(S_kv)
-    print('\nПеревірка за критерієм Кохрена')
-    return Gp
-
-
-def cohren(f1, f2, q=0.05):
-    q1 = q / f1
-    fisher_value = f.ppf(q=1 - q1, dfn=f2, dfd=(f1 - 1) * f2)
-    return fisher_value / (fisher_value + f1 - 1)
-
-
-# оцінки коефіцієнтів
-def bs(x, y_aver, n):
-    res = [sum(1 * y for y in y_aver) / n]
-
-    for i in range(len(x[0])):
-        b = sum(j[0] * j[1] for j in zip(x[:, i], y_aver)) / n
-        res.append(b)
-    return res
-
-
-def kriteriy_studenta(x, y, y_aver, n, m):
-    S_kv = s_kv(y, y_aver, n, m)
-    s_kv_aver = sum(S_kv) / n
-
-    # статиcтична оцінка дисперсії
-    s_Bs = (s_kv_aver / n / m) ** 0.5  # статистична оцінка дисперсії
-    Bs = bs(x, y_aver, n)
-    ts = [round(abs(B) / s_Bs, 3) for B in Bs]
-
-    return ts
-
-
-def kriteriy_fishera(y, y_aver, y_new, n, m, d):
-    S_ad = m / (n - d) * sum([(y_new[i] - y_aver[i]) ** 2 for i in range(len(y))])
-    S_kv = s_kv(y, y_aver, n, m)
-    S_kv_aver = sum(S_kv) / n
-
-    return S_ad / S_kv_aver
-
-
-def check(X, Y, B, n, m):
-    print('\n\tПеревірка рівняння:')
-    f1 = m - 1
-    f2 = n
-    f3 = f1 * f2
-    q = 0.05
-
-    ### табличні значення
-    student = partial(t.ppf, q=1 - q)
-    t_student = student(df=f3)
-
-    G_kr = cohren(f1, f2)
-    ###
-
-    y_aver = [round(sum(i) / len(i), 3) for i in Y]
-    print('\nСереднє значення y:', y_aver)
-
-    disp = s_kv(Y, y_aver, n, m)
-    print('Дисперсія y:', disp)
-
-    Gp = kriteriy_cochrana(Y, y_aver, n, m)
-    print(f'Gp = {Gp}')
-    if Gp < G_kr:
-        print(f'З ймовірністю {1-q} дисперсії однорідні.')
-    else:
-        print("Необхідно збільшити кількість дослідів")
-        m += 1
-        main(n, m)
-
-    ts = kriteriy_studenta(X[:, 1:], Y, y_aver, n, m)
-    print('\nКритерій Стьюдента:\n', ts)
-    res = [t for t in ts if t > t_student]
-    final_k = [B[i] for i in range(len(ts)) if ts[i] in res]
-    print('\nКоефіцієнти {} статистично незначущі, тому ми виключаємо їх з рівняння.'.format(
-        [round(i, 3) for i in B if i not in final_k]))
-
-    y_new = []
     for j in range(n):
-        y_new.append(regression([X[j][i] for i in range(len(ts)) if ts[i] in res], final_k))
+        for i in range(n):
+            ac += lst[i] * mx[i][j]
+            if i == n - 1:
+                res.append(ac / n)
+                ac = 0
+    return res
 
-    print(f'\nЗначення "y" з коефіцієнтами {final_k}')
-    print(y_new)
 
-    d = len(res)
-    if d >= n:
-        print('\nF4 <= 0')
-        print('')
-        return
-    f4 = n - d
+def add_y_vals(func):
+    def inner(*args):
+        returned_values = func(*args)
+        mx = returned_values[0]
+        m = returned_values[1]
+        for i in range(len(mx)):
+            for j in range(m):
+                mx[i].append(round(uniform(y_min, y_max), ndigits=3))
+        return mx
 
-    F_p = kriteriy_fishera(Y, y_aver, y_new, n, m, d)
+    return inner
 
-    fisher = partial(f.ppf, q=0.95)
-    f_t = fisher(dfn=f4, dfd=f3)  # табличне значення
-    print('\nПеревірка адекватності за критерієм Фішера')
-    print('Fp =', F_p)
-    print('F_t =', f_t)
-    if F_p < f_t:
-        print('Математична модель адекватна експериментальним даним')
+
+@add_y_vals
+def gen_matrix(mx, num, mins, maxes):
+    for i in range(len(mx)):
+        mx[i] = list(mx[i])
+        mx[i].pop(0)
+        for j in range(len(mx[i])):
+            if mx[i][j] == -1:
+                mx[i][j] = mins[j]
+            elif mx[i][j] == 1:
+                mx[i][j] = maxes[j]
+    return mx, num
+
+
+def second_check(s_y, y_abs, matrix2, f1, f2, b, check1, norm_matrix):
+    N = 8
+    m = 3
+    s2_b = sum(s_y) / N
+    s2_beta = s2_b / (N * m)
+    s_beta = np.sqrt(s2_beta)
+
+    b_sum = beta(y_abs, norm_matrix, N)
+
+    f3 = f1 * f2
+    t_kr = par_t.ppf(df=f3, q=(1 + p) / 2)
+    d = 0
+    t = [abs(b_sum[i]) / s_beta for i in range(N)]
+    for i in range(len(t)):
+        if t[i] < t_kr:
+            t[i] = 0
+        else:
+            t[i] = 1
+            d += 1
+
+    b = [b[i] * t[i] for i in range(len(t))]
+    print(b)
+    print("b{} is unnecessary".format([i for i in range(len(t)) if t[i] == 0]))
+
+    # Fisher criteria
+
+    y = [b[0] + b[1] * matrix2[i][0] + b[2] * matrix2[i][1] + b[3] * matrix2[i][2] + b[4] * matrix2[i][3] + b[5] *
+         matrix2[i][4] + b[6] * matrix2[i][5] + b[7] * matrix2[i][6] for i in range(N)]
+
+    s2_ad = (m / (N - d)) * sum([(y[i] - y_abs[i]) ** 2 for i in range(N)])
+
+    Fp = s2_ad / s2_beta
+    f4 = N - d
+    F_kr = f.ppf(dfn=f4, dfd=f3, q=0.95)
+
+    print("Fp={}, F_kr={}".format(Fp, F_kr))
+    global counter
+    counter += 1
+
+    if Fp < F_kr:
+        print("Regression equation is adequate to original")
     else:
-        print('Математична модель не адекватна експериментальним даним')
+        print("Regression equation is inadequate to original")
+        lab5.square_equation(val=3)
+        # start(4)
 
 
-def main(n, m):
-    X5, Y5, X5_norm = plan_matrix5(n, m)
+def finish(number):
+    # define static variables
+    N = 8
+    m = 3
+    x_mins = [x1_min, x2_min, x3_min]
+    x_maxes = [x1_max, x2_max, x3_max]
+    norm_matrix = deepcopy(initial_matrix[:N])
+    matrix2 = deepcopy(norm_matrix)
+    solve_mx = [[] for i in range(N)]
 
-    y5_aver = [round(sum(i) / len(i), 3) for i in Y5]
-    B5 = find_coef(X5, y5_aver)
+    matrix2 = gen_matrix(matrix2, m, x_mins, x_maxes)
 
-    check(X5_norm, Y5, B5, n, m)
+    def cooperation(mx, pos, zero):
+        for i in range(N):
+            mx[i].insert(pos, mx[i][zero] * mx[i][zero + 1])
+            mx[i].insert(pos + 1, mx[i][zero] * mx[i][zero + 2])
+            mx[i].insert(pos + 2, mx[i][zero + 1] * mx[i][zero + 2])
+            mx[i].insert(pos + 3, mx[i][zero] * mx[i][zero + 1] * mx[i][zero + 2])
+
+    cooperation(norm_matrix, 4, 1)
+    cooperation(matrix2, 3, 0)
+    norm_matrix = np.array(norm_matrix)
+
+    row = len(matrix2[0])
+    y_abs = [abs_maker(matrix2, i, row - 1, row - m - 1, -1, m) for i in range(N)]
+
+    def mk_solve(mx1, res_mx):
+        vector0 = [1]
+        tmp = [sum(mx1[i][j] for i in range(N)) / N for j in range(N - 1)]
+        for i in tmp:
+            vector0.append(i)
+        k = 0
+
+        def mk_vector():
+            nonlocal k
+            nonlocal mx1
+            mx = mx1
+            vector = []
+
+            for z in range(N):
+                vector.clear()
+                flag = True
+
+                for j in range(N):
+                    suma = 0
+                    if flag:
+                        suma = sum(mx[i][k] for i in range(N))
+                        flag = False
+                    else:
+                        j -= 1
+                        for i in range(N):
+                            suma += mx[i][j] * mx[i][k]
+                    vector.append(suma / N)
+                k += 1
+                return vector
+
+        res_mx[0] = vector0
+        for i in range(1, len(res_mx)):
+            res_mx[i] = mk_vector()
+
+    mk_solve(matrix2, solve_mx)
+
+    k0 = sum([y_abs[i] for i in range(N)]) / N
+    k1 = sum([y_abs[i] * matrix2[i][0] for i in range(N)]) / N
+    k2 = sum([y_abs[i] * matrix2[i][1] for i in range(N)]) / N
+    k3 = sum([y_abs[i] * matrix2[i][2] for i in range(N)]) / N
+    k4 = sum([y_abs[i] * matrix2[i][3] for i in range(N)]) / N
+    k5 = sum([y_abs[i] * matrix2[i][4] for i in range(N)]) / N
+    k6 = sum([y_abs[i] * matrix2[i][5] for i in range(N)]) / N
+    k7 = sum([y_abs[i] * matrix2[i][6] for i in range(N)]) / N
+
+    b = np.linalg.solve(solve_mx,
+                        [k0, k1, k2, k3, k4, k5, k6, k7])
+
+    def check1():
+        # Confirm that y[j]_abs = y[j]
+        res = dict()
+        for i in range(N):
+            res.update(
+                {y_abs[i]: b[0] + b[1] * matrix2[i][0] + b[2] * matrix2[i][1] +
+                           b[3]
+                           * matrix2[i][2] + b[4] * matrix2[i][3] + b[5] * matrix2[i][4] + b[6] * matrix2[i][5] + b[7] *
+                           matrix2[i][6]})
+        return res
+
+    check1 = check1()
+    print(check1)
+
+    def korhen(f1, f2, q=0.05):
+
+        # Get critical value
+
+        q1 = q / f1
+        critical = f.ppf(q=1 - q1, dfn=f2, dfd=(f1 - 1) * f2)
+
+        return critical / (critical + f2 - 1)
+
+    s_y1 = sum([(matrix2[0][j] - y_abs[0]) ** 2 for j in range(row - 1, row - m - 1, -1)]) / m
+    s_y2 = sum([(matrix2[1][j] - y_abs[1]) ** 2 for j in range(row - 1, row - m - 1, -1)]) / m
+    s_y3 = sum([(matrix2[2][j] - y_abs[2]) ** 2 for j in range(row - 1, row - m - 1, -1)]) / m
+    s_y4 = sum([(matrix2[3][j] - y_abs[3]) ** 2 for j in range(row - 1, row - m - 1, -1)]) / m
+    s_y5 = sum([(matrix2[4][j] - y_abs[4]) ** 2 for j in range(row - 1, row - m - 1, -1)]) / m
+    s_y6 = sum([(matrix2[5][j] - y_abs[5]) ** 2 for j in range(row - 1, row - m - 1, -1)]) / m
+    s_y7 = sum([(matrix2[6][j] - y_abs[6]) ** 2 for j in range(row - 1, row - m - 1, -1)]) / m
+    s_y8 = sum([(matrix2[7][j] - y_abs[7]) ** 2 for j in range(row - 1, row - m - 1, -1)]) / m
+    s_y = (s_y1, s_y2, s_y3, s_y4, s_y5, s_y6, s_y7, s_y8)
+
+    gp = max(s_y1, s_y2, s_y3, s_y4, s_y5, s_y6, s_y7, s_y8) / sum(s_y)
+    f1 = m - 1
+    f2 = N
+    g_kr = korhen(f1, f2)
+
+    print("Gp={}, G_kr={}".format(gp, g_kr))
+
+    if gp < g_kr:
+        print("dispersion is uniform")
+        second_check(s_y, y_abs, matrix2, f1, f2, b, check1, norm_matrix)
+    else:
+        print("dispersion isn't uniform")
+        if m < 23:
+            return finish(m + 1)
+        else:
+            return False
 
 
-if __name__ == '__main__':
-    main(15, 3)
+def check_for_adequate(s_y, y_abs, matrix, f1, f2, b, norm_matrix, N):
+    # Define variables
+    norm_matrix = norm_matrix
+    matrix = matrix
+    N = N
+    s_y = s_y
+    y_abs = y_abs
+    f1 = f1
+    f2 = f2
+    b = b
+
+    # Main action
+
+    s2_b = sum(s_y) / N
+    s2_beta = s2_b / (N * m)
+    s_beta = np.sqrt(s2_beta)
+
+    # Student criteria: we want to find which coefficients are valuable:
+    #   to do it we compare t[i] with t_kr
+    #   but t[i] = b_[i]/ s_beta
+    #   so we find s2_b then s2_beta and then s_beta;  find b_[i] and then t[i]    <= using formulas
+
+    b_sum = beta(y_abs, norm_matrix, N)
+
+    # b_0 = sum([y_abs[i] * norm_matrix[i][0] for i in range(N)]) / N    
+
+    f3 = f1 * f2
+    t_kr = par_t.ppf(df=f3, q=(1 + p) / 2)
+
+    d = 0
+    t = [abs(b_sum[i]) / s_beta for i in range(N)]
+
+    for i in range(len(t)):
+        if t[i] < t_kr:
+            t[i] = 0
+        else:
+            t[i] = 1
+            d += 1
+    b = [b[i] * t[i] for i in range(len(t))]
+    print("b{} is unnecessary".format([i for i in range(len(t)) if t[i] == 0]))
+
+    y = [b[0] + b[1] * matrix[i][0] + b[2] * matrix[i][1] + b[3] * matrix[i][2] for i in range(4)]
+
+    # Fisher criteria    
+    if N == d:
+        d -= 1
+    s2_ad = (m / (N - d)) * sum(
+        [(y[i] - y_abs[i]) ** 2 for i in range(N)])
+
+    Fp = s2_ad / s2_beta
+    f4 = N - d
+    F_kr = f.ppf(dfn=f4, dfd=f3, q=0.95)
+
+    print("Fp={}, F_kr={}".format(Fp, F_kr))
+
+    global acumulator
+    global counter
+
+
+    if Fp < F_kr:
+        counter += 1
+        print("Regression equation is adequate to original")
+
+    else:
+        acumulator += 1
+        print("Regression equation is inadequate to original")
+        print('*' * 50)
+        print(" ")
+        finish(8)
+
+
+def start(number):
+    # define static variables
+    N = 4
+    m = number
+    x_mins = [x1_min, x2_min, x3_min]
+    x_maxes = [x1_max, x2_max, x3_max]
+    norm_matrix = deepcopy(initial_matrix[:N])
+    matrix = deepcopy(norm_matrix)
+
+    matrix = gen_matrix(matrix, m, x_mins, x_maxes)
+    row = len(matrix[0])
+
+    # Equals to y1_abs = sum([matrix[0][j] for j in range(row - 1, row - m - 1, -1)]) / m
+    def abs_maker(mx, column, start, stop, step, val):
+        return sum([mx[column][j] for j in range(start, stop, step)]) / val
+
+    y_abs = [abs_maker(matrix, i, row - 1, row - m - 1, -1, m) for i in range(N)]
+
+    mx1 = sum([matrix[i][0] for i in range(N)]) / N
+    mx2 = sum([matrix[i][1] for i in range(N)]) / N
+    mx3 = sum([matrix[i][2] for i in range(N)]) / N
+    mx = (mx1, mx2, mx3)
+    my = sum(y_abs) / N
+
+    a1 = sum([matrix[i][0] * y_abs[i] for i in range(N)]) / N
+    a2 = sum([matrix[i][1] * y_abs[i] for i in range(N)]) / N
+    a3 = sum([matrix[i][2] * y_abs[i] for i in range(N)]) / N
+
+    a11 = sum([matrix[i][0] ** 2 for i in range(N)]) / N
+    a22 = sum([matrix[i][1] ** 2 for i in range(N)]) / N
+    a33 = sum([matrix[i][2] ** 2 for i in range(N)]) / N
+
+    def prod(lst):
+        return lst[0] * lst[1]
+
+    a12 = a21 = sum([prod(matrix[i][:2]) for i in range(N)]) / N
+    a13 = a31 = sum([prod(matrix[i][:3:2]) for i in range(N)]) / N
+    a23 = a32 = sum([prod(matrix[i][1:3]) for i in range(N)]) / N
+
+    b = np.linalg.solve([[1, mx1, mx2, mx3],
+                         [mx1, a11, a21, a31],
+                         [mx2, a12, a22, a32],
+                         [mx3, a13, a23, a33]],
+                        [my, a1, a2, a3])
+
+    # Regression equation =>  y1 = b[0] + b[1] * x1 + b[2] * x2 + b[3] * x3
+
+    def check1():
+        # Confirm that y[j]_abs = y[j]
+        res = dict()
+        for i in range(N):
+            res.update(
+                {y_abs[i]: b[0] + b[1] * matrix[i][0] + b[2] * matrix[i][1] +
+                           b[3]
+                           * matrix[i][2]})
+        return res
+
+    check1_res = check1()
+    print(check1_res)
+    print("Matrix:\n", matrix)
+    print("Coefficients: ", b)
+    print("Check results for truth: \n", check1_res)
+
+    # Korhen check:
+
+    def korhen(f1, f2, q=0.05):
+        # Get critical value
+
+        q1 = q / f1
+        critical = f.ppf(q=1 - q1, dfn=f2, dfd=(f1 - 1) * f2)
+
+        return critical / (critical + f2 - 1)
+
+    s_y1 = sum([(matrix[0][j] - y_abs[0]) ** 2 for j in range(row - 1, row - m - 1, -1)]) / m
+    s_y2 = sum([(matrix[1][j] - y_abs[1]) ** 2 for j in range(row - 1, row - m - 1, -1)]) / m
+    s_y3 = sum([(matrix[2][j] - y_abs[2]) ** 2 for j in range(row - 1, row - m - 1, -1)]) / m
+    s_y4 = sum([(matrix[3][j] - y_abs[3]) ** 2 for j in range(row - 1, row - m - 1, -1)]) / m
+    s_y = (s_y1, s_y2, s_y3, s_y4)
+
+    gp = max(s_y1, s_y2, s_y3, s_y4) / sum([s_y1, s_y2, s_y3, s_y4])
+    f1 = m - 1
+    f2 = N
+    g_kr = korhen(f1, f2)
+
+    print("Gp={}, G_kr={}".format(gp, g_kr))
+
+    if gp < g_kr:
+        print("dispersion is uniform")
+        check_for_adequate(s_y, y_abs, matrix, f1, f2, b, norm_matrix, N)
+    else:
+        print("dispersion isn't uniform")
+        if m < 23:
+            return start(m + 1)
+        else:
+            return False
+
+
+while counter < 100:
+    start(m)
+
+print("Кількість використань квадратичних членів", acumulator)
+print("Кількість використань ефекту взаємодії", 100 - acumulator)
